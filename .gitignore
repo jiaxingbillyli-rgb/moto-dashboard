@@ -1,0 +1,18 @@
+# 系统文件 / OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 编辑器 / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志 / Logs
+*.log
+
+# 临时文件 / Temp files
+*.tmp
+*.bak
+~$*

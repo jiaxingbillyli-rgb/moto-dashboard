@@ -1,0 +1,20 @@
+# 统一换行符为 LF，避免 Windows/Linux/Mac 之间的差异
+# Normalize line endings to LF across platforms
+
+* text=auto
+
+# 文本文件强制 LF
+*.html text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# 二进制文件不转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
