@@ -175,7 +175,7 @@
 
   // ---- Initialize charts ----
   const charts = {};
-  ['chartTrend', 'chartRatio', 'chartMonthBar', 'chartMom',
+  ['chartTrend', 'chartRatio', 'chartMom',
    'chartDisp2wYear', 'chartDisp3wYear', 'chartDispHeatmap', 'chartDispLines',
    'chartVtypePie', 'chartVtypeStacked', 'chartVtype3w',
    'chartMfgRank', 'chartMfgPie', 'chartMfgTrend', 'chartMfgRankChange',
@@ -552,8 +552,10 @@
       xAxis: { type: 'category', data: last12, axisLabel: { rotate: 30 } },
       yAxis: { type: 'value', axisLabel: { formatter: '{value}%' } },
       series: [
-        { name: '生产 MoM Production MoM', type: 'bar', data: prodMom, itemStyle: { color: PALETTE.prod } },
-        { name: '销售 MoM Sales MoM', type: 'bar', data: salesMom, itemStyle: { color: PALETTE.sales } },
+        { name: '生产 MoM Production MoM', type: 'line', data: prodMom, itemStyle: { color: PALETTE.prod }, smooth: true, lineStyle: { width: 2.5 }, symbol: 'circle', symbolSize: 6,
+          markLine: { silent: true, symbol: 'none', label: { formatter: '0%', position: 'end' }, lineStyle: { color: '#94a3b8', type: 'dashed' }, data: [{ yAxis: 0 }] } },
+        { name: '销售 MoM Sales MoM', type: 'line', data: salesMom, itemStyle: { color: PALETTE.sales }, smooth: true, lineStyle: { width: 2.5 }, symbol: 'circle', symbolSize: 6,
+          markLine: { silent: true, symbol: 'none', label: { formatter: '0%', position: 'end' }, lineStyle: { color: '#94a3b8', type: 'dashed' }, data: [{ yAxis: 0 }] } },
       ],
     });
   }
@@ -1798,7 +1800,6 @@
     // Overview charts
     renderTrend(trendF, trendBase);
     renderRatio(filteredTotal);
-    renderMonthBar(filteredTotal);
     renderMoM(filteredTotal, full.totals);
     // Displacement
     renderDisp2wYear(filteredDisp2w);
