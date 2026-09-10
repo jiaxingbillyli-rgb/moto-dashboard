@@ -71,7 +71,7 @@ header .header-row { display: flex; align-items: center; justify-content: space-
   .filters {
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 16px 20px; margin-bottom: 18px; box-shadow: var(--shadow-sm);
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px;
+    display: grid; grid-template-columns: repeat(9, 1fr); gap: 12px;
   }
   .filter-group label {
     display: block; font-size: 11px; color: var(--text-muted);
@@ -268,6 +268,31 @@ header .header-row { display: flex; align-items: center; justify-content: space-
     <div class="filter-group">
       <label>排量段 Displacement（不选则全部）</label>
       <select id="fDisp" multiple size="4"></select>
+    </div>
+    <div class="filter-group">
+      <label>报告类型 Report Type</label>
+      <select id="fReportType">
+        <option value="monthly">月度报告 Monthly</option>
+        <option value="yearly">年度报告 Annual</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>排量快捷 Displacement Preset</label>
+      <select id="fDispPreset">
+        <option value="all">全部排量 All</option>
+        <option value="ge150">≥150cc（含 150cc）</option>
+        <option value="gt250">&gt;250cc（不含 250cc）</option>
+        <option value="ge400">≥400cc（含 400cc）</option>
+        <option value="ge800">≥800cc（含 800cc）</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>动力类型 Powertrain</label>
+      <select id="fPowertrain">
+        <option value="all">全部 All</option>
+        <option value="ice">燃油 ICE</option>
+        <option value="ev">电动 EV</option>
+      </select>
     </div>
     <div class="filter-group">
       <label>品牌筛选 Brand（不选则全部）</label>

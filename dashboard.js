@@ -126,6 +126,9 @@
   const fScope = document.getElementById('fScope');
   const fDisp = document.getElementById('fDisp');
   const fMfg = document.getElementById('fMfg');
+  const fReportType = document.getElementById('fReportType');
+  const fDispPreset = document.getElementById('fDispPreset');
+  const fPowertrain = document.getElementById('fPowertrain');
 
   META.years.forEach(y => {
     const o = document.createElement('option'); o.value = y; o.textContent = `${y} 年`; o.selected = true;
@@ -200,7 +203,18 @@
       scope: fScope.value,
       displacements,
       mfgs: Array.from(fMfg.selectedOptions).map(o => o.value),
+      reportType: fReportType.value,
+      dispPreset: fDispPreset.value,
+      powertrain: fPowertrain.value,
     };
+  }
+
+  // 动力类型筛选：category === '电动摩托车' 视为电动，其他（含二轮/三轮各排量段）视为燃油
+  function powertrainMatch(category, pt) {
+    if (pt === 'all' || !pt) return true;
+    if (pt === 'ev') return category === '电动摩托车';
+    if (pt === 'ice') return category !== '电动摩托车';
+    return true;
   }
 
   // 判断某条 mfg_displacement 记录是否命中已选排量（带 scope 匹配）
@@ -235,7 +249,9 @@
       f.years.includes(r.year) &&
       f.months.includes(r.month) &&
       (f.indicator === 'both' || r.indicator === f.indicator) &&
-      (f.mfgs.length === 0 || (r.manufacturer && f.mfgs.includes(r.manufacturer)))
+      (f.mfgs.length === 0 || (r.manufacturer && f.mfgs.includes(r.manufacturer))) &&
+      // 动力类型筛选（仅对有 category 字段的记录生效）
+      (r.category === undefined || powertrainMatch(r.category, f.powertrain))
     );
   }
 
@@ -256,18 +272,27 @@
   function buildData(f, extraYears) {
     const years = extraYears ? [...new Set([...f.years, ...extraYears])] : f.years;
 
-    if (!f.displacements.length) {
+    // 有排量筛选 或 有动力类型筛选时 → 从 byDisp2w（厂家×排量明细）聚合
+    // 这样可以同时支持排量段、动力类型的精确筛选
+    if (!f.displacements.length && (!f.powertrain || f.powertrain === 'all')) {
       const ff = Object.assign({}, f, { years });
       return { totals: applyFilters(monthlyTotal, ff), mfg: applyFilters(byMfg, ff), source: 'total' };
     }
 
-    const rows = mfgDisp.filter(r =>
+    // 按 scope 决定用哪份明细数据
+    // 电动摩托车的 scope 在 mfg_displacement 里记为 '电动' 或 '二轮'（归一化后统一为'二轮'）
+    const useMfgDisp = !f.displacements.length
+      ? mfgDisp  // 仅动力类型筛选时
+      : mfgDisp; // 排量筛选时也用 mfgDisp
+    const rows = useMfgDisp.filter(r =>
       years.includes(r.year) &&
       f.months.includes(r.month) &&
-      dispMatch(r, f.displacements) &&
+      (f.displacements.length === 0 || dispMatch(r, f.displacements)) &&
       (f.indicator === 'both' || r.indicator === f.indicator) &&
       (f.mfgs.length === 0 || f.mfgs.includes(r.manufacturer)) &&
-      scopeMatch(r.scope, f.scope)
+      scopeMatch(r.scope, f.scope) &&
+      // 动力类型：从 r.category 区分（'电动摩托车' = 电动，其他 = 燃油）
+      powertrainMatch(r.category, f.powertrain)
     );
 
     // 聚合为月度总计（同一厂家在二冲程页/四冲程页各出现一次，需相加）
@@ -1721,18 +1746,33 @@
   function updateFilterNote(f, source) {
     const el = document.getElementById('dispFilterNote');
     const parts = [];
+    // 报告类型
+    if (f.reportType === 'yearly') {
+      parts.push('<strong>📅 报告类型 Report Type：年度报告 Annual</strong>（数据已按年聚合）');
+      el.className = 'filter-note warn';
+    } else {
+      el.className = 'filter-note';
+    }
+    // 动力类型
+    if (f.powertrain === 'ev') {
+      parts.push('动力类型：<strong>电动 EV</strong>（仅显示 2023.09 起电动数据，早期数据无分排量明细）');
+    } else if (f.powertrain === 'ice') {
+      parts.push('动力类型：<strong>燃油 ICE</strong>（仅显示 2023.09 起燃油数据）');
+    }
+    // 排量快捷
+    if (f.dispPreset && f.dispPreset !== 'all') {
+      const labels = { ge150: '≥150cc', gt250: '>250cc', ge400: '≥400cc', ge800: '≥800cc' };
+      parts.push(`排量快捷 Displacement Preset：<strong>${labels[f.dispPreset]}</strong>`);
+    }
     if (f.displacements.length) {
       const labels = f.displacements.map(d => d.bucket);
       parts.push(`已选排量 Displacement <strong>${f.displacements.length}</strong> 段：${labels.join('、')}`);
-      parts.push('趋势 / 品牌图表已按该排量口径重算（由「品牌×排量」明细聚合）Trend / brand charts recalculated');
-      el.className = 'filter-note';
-    } else {
+      parts.push('趋势 / 品牌图表已按该排量口径重算（由「品牌×排量」明细聚合）');
       el.className = 'filter-note';
     }
     if (f.displacements.length && f.scope !== 'all') {
       parts.push(`车型范围 Category <strong>${f.scope}</strong>`);
     }
-    // 车型结构图无排量维度，需明确告知
     if (f.displacements.length) {
       parts.push('<em>注：「车型分布」页与「年度明细表」为官方汇总口径，不含排量维度，不受排量筛选影响</em>');
       el.className = 'filter-note warn';
@@ -1749,7 +1789,13 @@
     const base = buildData(f, f.years.map(y => y - 1));          // 同比基准
     const full = buildData(Object.assign({}, f, { years: META.years }));  // 环比完整序列
 
-    const filteredTotal = cur.totals;
+    // 报告类型：年度报告 → 把月度数据按年聚合（month=1 的虚拟月）
+    let filteredTotal = cur.totals;
+    let baseTotal = base.totals;
+    if (f.reportType === 'yearly') {
+      filteredTotal = aggregateYearly(filteredTotal);
+      baseTotal = aggregateYearly(baseTotal);
+    }
     const filteredMfg = cur.mfg;
 
     // 排量 / 车型数据集
@@ -1760,8 +1806,8 @@
     updateKPIs(filteredTotal, filteredMfg);
     updateFilterNote(f, cur.source);
 
-    // Overview charts
-    renderTrend(filteredTotal, base.totals);
+    // Overview charts（年度报告模式下同样渲染——数据已按年聚合）
+    renderTrend(filteredTotal, baseTotal);
     renderRatio(filteredTotal);
     renderMonthBar(filteredTotal);
     renderMoM(filteredTotal, full.totals);
@@ -1786,12 +1832,25 @@
     renderExport();
     // Annual
     renderAnnualTotal(filteredTotal);
-    renderAnnualYoy(filteredTotal, base.totals);
+    renderAnnualYoy(filteredTotal, baseTotal);
     renderEvShare(filteredDisp2w);
     renderLargeDisp(filteredDisp2w);
     renderAnnualTable();
     // Insights / 业务洞察
     renderInsights();
+  }
+
+  // 把月度数据按年聚合（年度合计），返回 [{year, month=1, indicator, value}]
+  function aggregateYearly(monthlyRecords) {
+    const map = new Map();
+    monthlyRecords.forEach(r => {
+      const key = `${r.year}|${r.indicator}`;
+      map.set(key, (map.get(key) || 0) + r.value);
+    });
+    return [...map.entries()].map(([k, v]) => {
+      const [y, ind] = k.split('|');
+      return { year: +y, month: 1, indicator: ind, value: v };
+    }).sort((a, b) => a.year - b.year);
   }
 
   document.getElementById('btnApply').addEventListener('click', applyAll);
@@ -1829,6 +1888,50 @@
     fScope.value = 'all';
     Array.from(fDisp.options).forEach(o => o.selected = false);
     Array.from(fMfg.options).forEach(o => o.selected = false);
+    fReportType.value = 'monthly';
+    fDispPreset.value = 'all';
+    fPowertrain.value = 'all';
+    applyAll();
+  });
+
+  // 排量快捷：选择预设时自动勾选对应排量段（同时清掉之前的勾选）
+  fDispPreset.addEventListener('change', () => {
+    const preset = fDispPreset.value;
+    // 先清空当前勾选
+    Array.from(fDisp.options).forEach(o => o.selected = false);
+    if (preset === 'all') { applyAll(); return; }
+    // 根据预设设置要勾选的排量段
+    // 二轮标准段（含 150-800 段）按值域范围匹配
+    const set = (pred) => {
+      Array.from(fDisp.options).forEach(o => {
+        const bucket = o.value.split('|').pop();
+        if (pred(bucket)) o.selected = true;
+      });
+    };
+    if (preset === 'ge150') {
+      // ≥150cc（含 150cc）：125ml<150ml ≤ 150cc 本身是 150cc，不对。
+      // 125-150, 150-200, 200-250, 250-400, 400-500, 500-800, >800，以及历史 150-250, 400-750, >750
+      set(b => /≥/.test(b) || /125.*150|150.*200|200.*250|250.*400|400.*500|500.*800|>800|150.*250|400.*750|>750/.test(b) || (b.startsWith('电动')));
+    } else if (preset === 'gt250') {
+      // >250cc（不含 250cc）：250-400, 400-500, 500-800, >800
+      set(b => /250.*400|400.*500|500.*800|>800/.test(b));
+    } else if (preset === 'ge400') {
+      // ≥400cc：400-500, 500-800, >800
+      set(b => /400.*500|500.*800|>800/.test(b));
+    } else if (preset === 'ge800') {
+      // ≥800cc：>800
+      set(b => />800/.test(b));
+    }
+    applyAll();
+  });
+
+  // 报告类型切换：年度报告时按年聚合（聚合所有月份为年度值）
+  fReportType.addEventListener('change', () => {
+    applyAll();
+  });
+
+  // 动力类型切换：直接 apply
+  fPowertrain.addEventListener('change', () => {
     applyAll();
   });
 
