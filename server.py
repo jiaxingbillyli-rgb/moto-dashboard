@@ -25,6 +25,14 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# 兼容 pythonw.exe（无窗口版）：此时 sys.stdout / sys.stderr 为 None，
+# 任何 print() / 日志输出都会抛 AttributeError 导致服务器崩溃。
+# 将其重定向到 null 设备，保证服务器可正常服务。
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 # Import extraction functions from sibling scripts
 sys.path.insert(0, str(Path(__file__).parent / "scripts"))
 
