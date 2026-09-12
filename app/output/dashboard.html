@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>摩托车产销数据看板 Motorcycle Production & Sales Dashboard · 2016-02 至 2026-06</title>
+<script src="echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #f0f2f7;
+    --panel: #ffffff;
+    --border: #e5e8ef;
+    --text: #1a1f36;
+    --text-muted: #6b7280;
+    --primary: #3b5bdb;
+    --primary-dark: #2f49c4;
+    --accent: #e11d48;
+    --green: #059669;
+    --amber: #d97706;
+    --shadow-sm: 0 1px 3px rgba(16,24,40,0.06);
+    --shadow: 0 4px 16px rgba(16,24,40,0.08);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+header {
+  background: linear-gradient(120deg, #1e2a5e 0%, #2f49c4 55%, #4f6ef7 100%);
+  color: white;
+  padding: 28px 32px 24px;
+  box-shadow: 0 2px 12px rgba(47,73,196,0.18);
+}
+header h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+header .sub { font-size: 13px; opacity: 0.85; }
+header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.upload-zone { display: flex; align-items: center; gap: 10px; }
+.upload-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4);
+  color: white; border-radius: 10px; padding: 9px 18px; font-size: 13px; cursor: pointer;
+  transition: all 0.2s; white-space: nowrap; backdrop-filter: blur(4px);
+}
+.upload-btn:hover { background: rgba(255,255,255,0.28); }
+.upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.upload-status { font-size: 12px; opacity: 0.9; }
+.upload-status.error { color: #fecaca; }
+.upload-status.ok { color: #bbf7d0; }
+
+  .container { max-width: 1480px; margin: 0 auto; padding: 22px 24px 80px; }
+
+  /* KPI cards */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary); }
+  .kpi .label { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .kpi .value { font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+  .kpi .delta { font-size: 12px; margin-top: 6px; }
+  .delta.up { color: var(--accent); }
+  .delta.down { color: var(--green); }
+
+  /* Filter bar */
+  .filters {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; margin-bottom: 18px; box-shadow: var(--shadow-sm);
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px;
+  }
+  .filter-group label {
+    display: block; font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; font-weight: 600;
+  }
+  .filter-group select, .filter-group input {
+    width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; background: white; color: var(--text); transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .filter-group select:focus, .filter-group input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,91,219,0.12); }
+  .filter-actions { grid-column: span 6; display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* 趋势图专属工具栏（仅作用于月度趋势图）Trend-only toolbar */
+  .trend-toolbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: linear-gradient(135deg, #f0f7ff 0%, #eef2ff 100%);
+    border: 1px solid #c7d2fe; border-radius: var(--radius);
+    padding: 10px 16px; margin-bottom: 10px;
+  }
+  .trend-toolbar .trend-toolbar-title {
+    font-size: 12px; font-weight: 600; color: #3730a3;
+    display: flex; align-items: center; gap: 6px; padding-right: 4px;
+    border-right: 1px solid #c7d2fe;
+  }
+  .trend-toolbar .trend-toolbar-title::before {
+    content: '📈'; font-size: 14px;
+  }
+  .trend-toolbar-group {
+    display: flex; flex-direction: column; gap: 3px; min-width: 150px;
+  }
+  .trend-toolbar-group label {
+    font-size: 10px; color: #4f46e5; text-transform: uppercase;
+    letter-spacing: 0.05em; margin: 0; font-weight: 700;
+  }
+  .trend-toolbar-group select {
+    padding: 5px 10px; border: 1px solid #c7d2fe; border-radius: 6px;
+    font-size: 12px; background: white; color: var(--text); cursor: pointer;
+  }
+  .trend-toolbar-group select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59,91,219,0.18); }
+  .trend-toolbar-hint {
+    font-size: 11px; color: #6366f1; font-style: italic;
+    margin-left: auto; padding-left: 10px;
+  }
+  .filter-note {
+    background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px;
+    padding: 9px 16px; margin-bottom: 16px; font-size: 12px; color: #3730a3;
+  }
+  .filter-note:empty { display: none; }
+  .filter-note.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+  .filter-actions button {
+    border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer;
+    background: var(--primary); color: white; transition: background 0.2s; font-weight: 500;
+  }
+  .filter-actions button:hover { background: var(--primary-dark); }
+  .filter-actions button.secondary { background: white; color: var(--text); border: 1px solid var(--border); }
+  .filter-actions button.secondary:hover { background: var(--bg); }
+  .mfg-compare-selects { display: flex; gap: 8px; margin-bottom: 10px; }
+  .mfg-compare-selects button {
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px;
+    font-size: 12px; cursor: pointer; background: white; color: var(--text);
+    transition: all 0.15s;
+  }
+  .mfg-compare-selects button:hover { background: var(--bg); border-color: var(--primary); color: var(--primary); }
+
+  /* Charts grid */
+  .grid {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px;
+  }
+  .grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; box-shadow: var(--shadow-sm);
+  }
+  .panel h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .panel .hint { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+  .chart { width: 100%; height: 320px; }
+  .chart.tall { height: 380px; }
+  .chart.short { height: 260px; }
+  .chart.xl { height: 420px; }
+
+  /* Data table */
+  .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-top: 16px; max-height: 520px; overflow: auto; box-shadow: var(--shadow-sm); }
+  .table-wrap h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { background: var(--bg); font-weight: 600; color: var(--text-muted); position: sticky; top: 0; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr:hover { background: rgba(59,91,219,0.04); }
+
+  footer { text-align: center; padding: 16px; color: var(--text-muted); font-size: 11px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 2px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 10px 18px; font-size: 13px; cursor: pointer; color: var(--text-muted);
+    border-bottom: 2px solid transparent; transition: all 0.2s; line-height: 1.25; text-align: center;
+    border-radius: 8px 8px 0 0;
+  }
+  .tab:hover { color: var(--primary); background: rgba(59,91,219,0.04); }
+  .tab span { font-size: 10px; opacity: 0.7; display: block; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; animation: fadeIn 0.25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Insights / 业务洞察 */
+  .insights-summary {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px;
+  }
+  .insight-stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+  }
+  .insight-stat .stat-icon { font-size: 22px; margin-bottom: 8px; }
+  .insight-stat .stat-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .insight-stat .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .insight-stat .stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .insight-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 22px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
+  }
+  .insight-card h3 { margin: 0 0 14px; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .insight-card h3 .tag { font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 20px; }
+  .tag.up { background: #fee2e2; color: #b91c1c; }
+  .tag.down { background: #dcfce7; color: #15803d; }
+  .tag.warn { background: #fef3c7; color: #b45309; }
+  .tag.info { background: #e0e7ff; color: #3730a3; }
+  .insight-list { list-style: none; margin: 0; padding: 0; }
+  .insight-list li {
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+    display: flex; gap: 12px; align-items: flex-start; line-height: 1.55;
+  }
+  .insight-list li:last-child { border-bottom: none; }
+  .insight-list .dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; }
+  .insight-list .txt { font-size: 13px; color: var(--text); }
+  .insight-list .txt strong { font-weight: 700; }
+  .insight-list .txt .num { font-weight: 700; color: var(--primary); }
+  .insight-list .txt .bad { color: var(--accent); font-weight: 600; }
+  .insight-list .txt .good { color: var(--green); font-weight: 600; }
+  .rec-list { list-style: none; margin: 0; padding: 0; counter-reset: rec; }
+  .rec-list li {
+    padding: 12px 0 12px 36px; border-bottom: 1px solid var(--border);
+    position: relative; font-size: 13px; line-height: 1.6;
+  }
+  .rec-list li:last-child { border-bottom: none; }
+  .rec-list li::before {
+    counter-increment: rec; content: counter(rec);
+    position: absolute; left: 0; top: 12px; width: 24px; height: 24px;
+    background: var(--primary); color: white; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+  }
+  .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) {
+    .insight-grid { grid-template-columns: 1fr; }
+    .insights-summary { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-row">
+    <div>
+      <h1>摩托车产销数据看板 <span style="font-weight:300;font-size:16px;opacity:.85;">Motorcycle Production & Sales Dashboard</span></h1>
+      <div class="sub">中国摩托车产销月度数据 China Monthly Motorcycle Data · 时间范围 Period：<span id="dataRange">加载中 Loading...</span> · 数据源 Source：全国摩托车生产企业产销情况月报</div>
+    </div>
+    <div class="upload-zone">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
+      <button class="upload-btn" id="btnUpload">📤 上传更新文件 Upload Monthly Report</button>
+      <span class="upload-status" id="uploadStatus"></span>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- KPI summary -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="label">累计生产 Production（筛选范围内）</div>
+      <div class="value" id="kpiProd">—</div>
+      <div class="delta" id="kpiProdDelta"></div>
+    </div>
+    <div class="kpi">
+      <div class="label">累计销售 Sales（筛选范围内）</div>
+      <div class="value" id="kpiSales">—</div>
+      <div class="delta" id="kpiSalesDelta"></div>
+    </div>
+    <div class="kpi">
+      <div class="label">产销率 Sales/Production Ratio</div>
+      <div class="value" id="kpiRatio">—</div>
+      <div class="delta" id="kpiRatioHint"></div>
+    </div>
+    <div class="kpi">
+      <div class="label">活跃品牌数 Active Brands</div>
+      <div class="value" id="kpiMfg">—</div>
+      <div class="delta" id="kpiMfgHint"></div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <div class="filter-group">
+      <label>年份 Year</label>
+      <select id="fYear" multiple size="4"></select>
+    </div>
+    <div class="filter-group">
+      <label>月份 Month</label>
+      <select id="fMonth" multiple size="6"></select>
+    </div>
+    <div class="filter-group">
+      <label>指标 Indicator</label>
+      <select id="fIndicator">
+        <option value="both">生产 + 销售 Prod + Sales</option>
+        <option value="生产">仅生产 Production only</option>
+        <option value="销售">仅销售 Sales only</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>车型范围 Category</label>
+      <select id="fScope">
+        <option value="all">全部（合计）All</option>
+        <option value="二轮">二轮 Two-wheeler</option>
+        <option value="三轮">三轮 Three-wheeler</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>排量段 Displacement（不选则全部）</label>
+      <select id="fDisp" multiple size="4"></select>
+    </div>
+    <div class="filter-group">
+      <label>品牌筛选 Brand（不选则全部）</label>
+      <select id="fMfg" multiple size="4"></select>
+    </div>
+    <div class="filter-actions">
+      <button class="secondary" id="btnDispAll">排量全选 Select All</button>
+      <button class="secondary" id="btnDispNone">清空排量 Clear</button>
+      <button class="secondary" id="btnReset">重置 Reset</button>
+      <button id="btnApply">应用筛选 Apply</button>
+    </div>
+  </div>
+  <div id="dispFilterNote" class="filter-note"></div>
+
+  <!-- Tab navigation -->
+  <div class="tabs">
+    <div class="tab active" data-tab="insights">业务洞察<br><span style="font-weight:300;">Insights</span></div>
+    <div class="tab" data-tab="overview">月度趋势<br><span style="font-weight:300;">Monthly Trend</span></div>
+    <div class="tab" data-tab="displacement">排量分布<br><span style="font-weight:300;">Displacement</span></div>
+    <div class="tab" data-tab="vehicles">车型分布<br><span style="font-weight:300;">Vehicle Types</span></div>
+    <div class="tab" data-tab="manufacturers">品牌排名<br><span style="font-weight:300;">Brands</span></div>
+    <div class="tab" data-tab="export">内销外销<br><span style="font-weight:300;">Domestic/Export</span></div>
+    <div class="tab" data-tab="annual">年度报告<br><span style="font-weight:300;">Annual Report</span></div>
+  </div>
+
+  <!-- Tab: Insights / 业务洞察 -->
+  <div class="tab-pane active" data-pane="insights">
+    <div id="insightsRoot"></div>
+  </div>
+
+  <!-- Tab: Overview / Monthly Trend -->
+  <div class="tab-pane" data-pane="overview">
+    <div class="grid">
+      <div class="panel">
+        <!-- 趋势图专属工具栏：仅作用于下方「月度趋势」图，不影响其他图表 -->
+        <div class="trend-toolbar">
+          <div class="trend-toolbar-title">仅作用于此趋势图<br><span style="font-weight:400;font-size:10px;color:#6366f1;">Trend-only filters</span></div>
+          <div class="trend-toolbar-group">
+            <label>报告类型 Report Type</label>
+            <select id="fReportType">
+              <option value="monthly">月度报告 Monthly</option>
+              <option value="yearly">年度报告 Annual</option>
+            </select>
+          </div>
+          <div class="trend-toolbar-group">
+            <label>排量快捷 Displacement Preset</label>
+            <select id="fDispPreset">
+              <option value="all">全部排量 All</option>
+              <option value="ge150">≥150cc（含 150cc）</option>
+              <option value="gt250">&gt;250cc（不含 250cc）</option>
+              <option value="ge400">≥400cc（含 400cc）</option>
+              <option value="ge800">≥800cc（含 800cc）</option>
+            </select>
+          </div>
+          <div class="trend-toolbar-group">
+            <label>动力类型 Powertrain</label>
+            <select id="fPowertrain">
+              <option value="all">全部 All</option>
+              <option value="ice">燃油 ICE</option>
+              <option value="ev">电动 EV</option>
+            </select>
+          </div>
+          <div class="trend-toolbar-hint">不影响其他图表 Other charts unchanged</div>
+        </div>
+        <h3>生产 / 销售 月度趋势 Monthly Production & Sales Trend</h3>
+        <p class="hint">可点击图例切换显示 Click legend to toggle；左轴为绝对量，右轴为同比增速</p>
+        <div class="chart tall" id="chartTrend"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>产销率月度走势 Monthly Sales/Production Ratio</h3>
+        <p class="hint">销售 / 生产 Sales / Production。100% 以上表示供不应求</p>
+        <div class="chart" id="chartRatio"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>近 12 个月环比增速 Last 12 Months MoM Growth</h3>
+        <p class="hint">环比上月增长百分比。中国市场春节月波动较大。折线图展示趋势 Line chart for trend</p>
+        <div class="chart" id="chartMom"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Displacement -->
+  <div class="tab-pane" data-pane="displacement">
+    <div class="grid">
+      <div class="panel">
+        <h3>二轮摩托车 — 年度排量分布 Two-wheeler Displacement by Year</h3>
+        <p class="hint">堆叠柱状图，按排量段展示各年生产量</p>
+        <div class="chart tall" id="chartDisp2wYear"></div>
+      </div>
+      <div class="panel">
+        <h3>三轮摩托车 — 年度排量分布 Three-wheeler Displacement by Year</h3>
+        <p class="hint">三轮摩托车主用于货运和载客</p>
+        <div class="chart tall" id="chartDisp3wYear"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>排量段月度热力图（二轮）Displacement Heatmap (2W)</h3>
+        <p class="hint">每行一个排量段，颜色越深销量越大</p>
+        <div class="chart tall" id="chartDispHeatmap"></div>
+      </div>
+      <div class="panel">
+        <h3>主要排量段趋势 Major Displacement Trends</h3>
+        <p class="hint">110-125ml 是国内摩托车主流排量</p>
+        <div class="chart tall" id="chartDispLines"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Vehicle Types -->
+  <div class="tab-pane" data-pane="vehicles">
+    <div class="grid three">
+      <div class="panel">
+        <h3>二轮车型占比 Two-wheeler Type Share（最新年）</h3>
+        <p class="hint">骑式 / 弯梁 / 踏板 三大车型</p>
+        <div class="chart tall" id="chartVtypePie"></div>
+      </div>
+      <div class="panel">
+        <h3>车型结构演变 Vehicle Type Evolution</h3>
+        <p class="hint">骑式下滑、踏板式崛起是行业近 10 年主旋律</p>
+        <div class="chart tall" id="chartVtypeStacked"></div>
+      </div>
+      <div class="panel">
+        <h3>三轮车型结构 Three-wheeler Type Structure</h3>
+        <p class="hint">正三轮（货运/客运）vs 边三轮（少量）</p>
+        <div class="chart tall" id="chartVtype3w"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Brands -->
+  <div class="tab-pane" data-pane="manufacturers">
+    <!-- 品牌销量对比专区 -->
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>品牌销量对比 Brand Sales Comparison（多选品牌）</h3>
+      <p class="hint">在下方快速勾选品牌，或使用顶部筛选栏的「品牌筛选」；对比图为所选品牌的销量（默认累计销量，可切换生产/销售）</p>
+      <div class="mfg-compare-selects">
+        <button class="secondary" id="btnMfgCompareTop10">选 Top 10 Top 10</button>
+        <button class="secondary" id="btnMfgCompareClear">清空选择 Clear</button>
+      </div>
+      <div class="grid">
+        <div class="panel" style="border:0;padding:0;">
+          <h3>累计销量对比 Cumulative Sales（横条）</h3>
+          <div class="chart" id="chartMfgCompareBar"></div>
+        </div>
+        <div class="panel" style="border:0;padding:0;">
+          <h3>月度销量趋势对比 Monthly Sales Trend</h3>
+          <div class="chart" id="chartMfgCompareTrend"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>品牌总产量排行 Brand Production Rank（全部时间）</h3>
+        <p class="hint">Top 20 摩托车生产品牌 Top 20 brands</p>
+        <div class="chart tall" id="chartMfgRank"></div>
+      </div>
+      <div class="panel">
+        <h3>品牌市场份额 Brand Market Share（最新年 Top 10）</h3>
+        <p class="hint">以饼图展示市场集中度 Market concentration</p>
+        <div class="chart tall" id="chartMfgPie"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>品牌月度趋势对比 Brand Monthly Trend</h3>
+        <p class="hint">可在筛选栏勾选多个品牌进行对比</p>
+        <div class="chart tall" id="chartMfgTrend"></div>
+      </div>
+      <div class="panel">
+        <h3>品牌排名变化 Brand Rank Change（YoY）</h3>
+        <p class="hint">每年 Top 10 品牌的排名热力图</p>
+        <div class="chart tall" id="chartMfgRankChange"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>大排量品牌排名 Large-displacement Brand Rank（>250ml）</h3>
+        <p class="hint">按 >250ml 排量段累计产量排序（仅 2023.9 起有品牌×排量明细）</p>
+        <div class="chart tall" id="chartMfgLargeDisp"></div>
+      </div>
+      <div class="panel">
+        <h3>大排量品牌市场份额 Large-displacement Market Share（>250ml）</h3>
+        <p class="hint">>250ml 排量段市场集中度</p>
+        <div class="chart tall" id="chartMfgLargePie"></div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <h3>品牌月度明细 Brand Monthly Detail</h3>
+      <table id="mfgTable">
+        <thead>
+          <tr><th>品牌 Brand</th><th>指标 Ind</th><th>年度 Year</th><th>1月</th><th>2月</th><th>3月</th><th>4月</th><th>5月</th><th>6月</th><th>7月</th><th>8月</th><th>9月</th><th>10月</th><th>11月</th><th>12月</th><th>全年合计 Total</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tab: Export / 内销外销 -->
+  <div class="tab-pane" data-pane="export">
+    <div class="kpis">
+      <div class="kpi">
+        <div class="label">累计出口量 Exports（筛选范围内）</div>
+        <div class="value" id="kpiExport">—</div>
+        <div class="delta" id="kpiExportDelta"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">累计出口金额 Export Value</div>
+        <div class="value" id="kpiExportAmt">—</div>
+        <div class="delta" id="kpiExportAmtDelta"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">出口占销量比 Export Ratio（外销率）</div>
+        <div class="value" id="kpiExportRatio">—</div>
+        <div class="delta" id="kpiExportRatioHint"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">内销量 Domestic（销量-出口）</div>
+        <div class="value" id="kpiDomestic">—</div>
+        <div class="delta" id="kpiDomesticHint"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>内销 vs 出口 月度对比 Domestic vs Export Monthly（分组柱状）</h3>
+        <p class="hint">每个月内销、出口两根柱并列，直观对比规模</p>
+        <div class="chart tall" id="chartExportStack"></div>
+      </div>
+      <div class="panel">
+        <h3>内销 vs 出口 月度趋势 Domestic vs Export Trend（折线）</h3>
+        <p class="hint">两条折线直接对比走势</p>
+        <div class="chart tall" id="chartExportCompare"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>出口占销量比走势 Export Ratio Trend（外销率）</h3>
+        <p class="hint">出口量 / 销量。占比越高说明外销依赖度越高</p>
+        <div class="chart tall" id="chartExportRatio"></div>
+      </div>
+      <div class="panel">
+        <h3>出口金额月度趋势 Monthly Export Value</h3>
+        <p class="hint">摩托车整车出口金额（美元 USD）</p>
+        <div class="chart tall" id="chartExportAmt"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>出口品牌排名 Export Brand Rank（Top 15）</h3>
+        <p class="hint">按累计出口量排序</p>
+        <div class="chart tall" id="chartExportMfg"></div>
+      </div>
+      <div class="panel">
+        <h3>内销 vs 出口 年度对比 Domestic vs Export by Year</h3>
+        <p class="hint">每年内销、出口总量并列对比</p>
+        <div class="chart tall" id="chartExportYear"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>二轮出口结构 Two-wheeler Export Structure（按排量段）</h3>
+        <p class="hint">各排量段出口量占比</p>
+        <div class="chart tall" id="chartExportDisp"></div>
+      </div>
+      <div class="panel">
+        <h3>内销 vs 出口 占比演变 Domestic vs Export Share</h3>
+        <p class="hint">各年内外销比例（百分比堆叠）</p>
+        <div class="chart tall" id="chartExportShare"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>内销 / 出口 按车型分布 Domestic/Export by Vehicle Type</h3>
+        <p class="hint">骑式 / 弯梁 / 踏板 各车型的内销与出口量对比</p>
+        <div class="chart tall" id="chartExportType"></div>
+      </div>
+      <div class="panel">
+        <h3>大排量出口与内销 Large-displacement Export vs Domestic（>250ml）</h3>
+        <p class="hint">>250ml 排量段的出口量与内销量对比（内销 = 生产 − 出口）</p>
+        <div class="chart tall" id="chartExportLarge"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Annual Report -->
+  <div class="tab-pane" data-pane="annual">
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>年度产销量 Annual Production & Sales</h3>
+      <p class="hint">各年产销量（辆），柱状图 Production & Sales by year (units)</p>
+      <div class="chart xl" id="chartAnnualTotal"></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>同比增速 Year-over-Year Growth（YoY）</h3>
+      <p class="hint">百分比。各年相对上一年的同比增长率</p>
+      <div class="chart tall" id="chartAnnualYoy"></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>大排量增长 Large-displacement Growth（>250ml）</h3>
+      <p class="hint">柱状图为各排量段堆叠，顶部数值为当年 >250ml 总量，紫色折线为同比增速</p>
+      <div class="chart xl" id="chartLargeDisp"></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;">
+      <h3>电动摩托车占比演变 Electric Motorcycle Share</h3>
+      <p class="hint">电动 vs 燃油；雅迪、爱玛等电动车企入局改变了行业格局</p>
+      <div class="chart tall" id="chartEvShare"></div>
+    </div>
+    <div class="table-wrap">
+      <h3>年度明细数据 Annual Detail Data</h3>
+      <table id="annualTable">
+        <thead id="annualTableHead">
+          <tr><th>指标 / 维度 Indicator</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p class="hint">* 标注年份数据不完整（首尾年）</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>数据来源 Source：全国摩托车生产企业产销情况月报（2016年2月 — 2026年6月）· 由 WorkBuddy 自动整理</footer>
+
+<script src="dashboard.js"></script>
+</body>
+</html>

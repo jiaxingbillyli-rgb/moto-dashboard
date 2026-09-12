@@ -16,3 +16,11 @@ Desktop.ini
 *.tmp
 *.bak
 ~$*
+
+# 云端应用 app/: 生成产物（10MB，由 CSV 聚合而成，启动时自动生成）
+app/output/dashboard_data.json
+app/output/uploads/
+__pycache__/
+
+# 密钥 / Secrets
+.env

@@ -10,12 +10,15 @@ Serves static dashboard files AND provides a POST /upload endpoint that:
 Run:  python server.py 8765
 """
 
+import base64
 import csv
 import json
 import os
 import re
 import sys
+import threading
 import traceback
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -56,6 +59,72 @@ OUT = Path(__file__).parent / "output"
 SCRIPTS = Path(__file__).parent / "scripts"
 UPLOADS = OUT / "uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
+
+# ---- GitHub 数据持久化（云平台可选功能）----
+# 云平台容器重启会丢磁盘数据。配置后：
+#   上传新数据 → 后台把 CSV 源数据推回仓库；容器重启 → 自动拉取 CSV 并重新聚合。
+# 未配置时完全按本地模式运行，不影响任何现有功能。
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "").strip()        # 形如 owner/repo
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main").strip()
+
+# 需要持久化的 CSV 源数据（dashboard_data.json 是生成产物，不进仓库）
+CSV_FILES = [
+    "monthly_summary_full.csv",
+    "monthly_summary.csv",
+    "monthly_manufacturer.csv",
+    "monthly_manufacturer_displacement.csv",
+    "monthly_export.csv",
+    "monthly_export_amount.csv",
+    "monthly_export_mfg.csv",
+]
+
+
+def _gh_api(path, method="GET", payload=None):
+    """调用 GitHub REST API。path 形如 /repos/owner/repo/contents/xxx"""
+    url = f"https://api.github.com{path}"
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"token {GITHUB_TOKEN}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("User-Agent", "moto-dashboard")
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.loads(r.read() or b"{}")
+
+
+def push_csv_to_github():
+    """把本地 CSV 源数据提交到仓库的 data/ 目录。返回已更新文件列表。"""
+    updated = []
+    for name in CSV_FILES:
+        p = OUT / name
+        if not p.exists():
+            continue
+        b64 = base64.b64encode(p.read_bytes()).decode()
+        path = f"/repos/{GITHUB_REPO}/contents/data/{name}"
+        sha = None
+        try:
+            sha = _gh_api(f"{path}?ref={GITHUB_BRANCH}").get("sha")
+        except Exception:
+            sha = None
+        payload = {"message": f"data: update {name}", "content": b64, "branch": GITHUB_BRANCH}
+        if sha:
+            payload["sha"] = sha
+        _gh_api(path, method="PUT", payload=payload)
+        updated.append(name)
+    return updated
+
+
+def pull_csv_from_github():
+    """从仓库 data/ 目录拉取 CSV 源数据到本地 output/。"""
+    for name in CSV_FILES:
+        path = f"/repos/{GITHUB_REPO}/contents/data/{name}"
+        try:
+            meta = _gh_api(f"{path}?ref={GITHUB_BRANCH}")
+        except Exception:
+            continue
+        if meta.get("content") and meta.get("encoding") == "base64":
+            (OUT / name).write_bytes(base64.b64decode(meta["content"]))
+            print(f"[boot]   restored {name}")
 
 # Fields for each CSV
 SUMMARY_FIELDS = ["year", "month", "indicator", "scope", "category", "type", "value"]
@@ -342,6 +411,17 @@ class Handler(BaseHTTPRequestHandler):
 
             # Process
             result = process_upload(str(save_path), filename)
+
+            # 云端持久化：后台把 CSV 推回 GitHub，不阻塞本次响应
+            if GITHUB_TOKEN and GITHUB_REPO:
+                def _bg_push():
+                    try:
+                        push_csv_to_github()
+                        print("[upload] CSV 已备份到 GitHub")
+                    except Exception as e:
+                        print(f"[upload] GitHub 备份失败: {e}")
+                threading.Thread(target=_bg_push, daemon=True).start()
+
             self._send_json({"ok": True, "filename": filename, "result": result})
 
         except Exception as e:
@@ -366,12 +446,52 @@ def parse_multipart(body, boundary):
     return None, b""
 
 
+def ensure_data_ready():
+    """启动时确保数据就绪（云平台友好）。
+
+    1) 没有 CSV 源数据 → 若配了 GitHub 则从仓库 data/ 拉取
+    2) 有 CSV 但没有 dashboard_data.json → 重新聚合生成（云端首次启动的典型情形，
+       因为 JSON 是生成产物、通常不入库）
+    本地有完整数据时直接放行，几乎零开销。
+    """
+    sentinel = OUT / "monthly_summary_full.csv"
+    data_json = OUT / "dashboard_data.json"
+
+    if not sentinel.exists():
+        if not (GITHUB_TOKEN and GITHUB_REPO):
+            return
+        print("[boot] 本地无 CSV，尝试从 GitHub 恢复 ...")
+        try:
+            pull_csv_from_github()
+        except Exception as e:
+            print(f"[boot] 恢复失败（将以空数据启动）: {e}")
+            return
+
+    if sentinel.exists() and not data_json.exists():
+        print("[boot] 缺少 dashboard_data.json，开始聚合生成 ...")
+        try:
+            run_aggregation()
+            print(f"[boot] 已生成 dashboard_data.json")
+        except Exception as e:
+            print(f"[boot] 聚合失败: {e}")
+
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    port = int(os.environ.get("PORT") or (sys.argv[1] if len(sys.argv) > 1 else 8765))
+    # 云平台会注入 PORT，此时自动监听 0.0.0.0（对外可访问）；
+    # 本机默认只监听回环地址，更安全。也可用 HOST 环境变量显式覆盖。
+    host = os.environ.get("HOST") or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
+
+    ensure_data_ready()
+
+    server = ThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True
-    print(f"Dashboard server running at http://127.0.0.1:{port}/")
+    print(f"Dashboard server running at http://{host}:{port}/")
     print(f"  Upload endpoint: POST /upload")
+    if GITHUB_TOKEN and GITHUB_REPO:
+        print(f"  GitHub persistence: enabled ({GITHUB_REPO})")
+    else:
+        print("  GitHub persistence: disabled (set GITHUB_TOKEN/GITHUB_REPO to enable)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
